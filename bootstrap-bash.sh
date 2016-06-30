@@ -1,55 +1,71 @@
 # Instructions for using this file:
-#  0) Never, EVER source this file directly from a Git repository
-#  1) Audit source code to verify that it does things securely
-#  2) Remove the `exit 1` line below to indicate that you trust this script
-#  3) When booting a machine:
-#       a) copy altered version of this file into /etc/skel/.bash_profile
-#       b) clone your user profiles repo into /var/lib/dotfiles
+#  0) Never source this file directly from the Git repository!
+#  1) Audit source code to verify that it does things securely and to your
+#     liking
+#  2) When booting a machine:
+#       a) clone your user profiles repo into /var/lib/dotfiles
+#       b) copy this file into /etc/skel/.bash_profile
 #       c) Copy a GPG keyring containing trusted public keys into /var/lib/dotfiles/gpg
 
-exit 1 # TODO: remove this line after auditing source, befor copying into /etc/skel
-
-# Get the aliases and functions
-if [ -f ~/.bashrc ]; then
-  . ~/.bashrc
-fi
-
-# Check for user-specific profile, or use default (_).
-pushd /var/lib/dotfiles
-if [ -d profiles/$USER ]; then
-  subdir=profiles/$USER
-else
-  subdir=profiles/_
-fi
-
-if [ -d $subdir ]; then
-  echo "First login: customizing profile"
-  cd $subdir
-
-  # Find all of the commits that touched any file in, or under, this dir.
-  # Determine their signature status and filter by those that are anything other
-  # than "Good."
-  untrusted=(`git ls-files | xargs -L 1 git log -n1 --pretty='format:%G?:%h%n' | sort | uniq | grep -E '^[^G]'`)
-
-  # Do that funky copying thing, or kvell at the user about untrusted commits.
-  if [  ${#untrusted[@]} == 0 ]; then
-    shopt -s dotglob
-    cp -R * $HOME/
-    if [ -f $HOME/.bash_profile ]; then
-      . $HOME/.bash_profile
-    fi
+# Dotfile customization logic, includes cryptographic integrity checking and
+# validation of key trustworthiness. All happens inside a function for easier
+# control flow.
+__dotfiles_secure__() {
+  # Check for user-specific profile, or use default (_).
+  if [ -d profiles/$USER ]; then
+    subdir=profiles/$USER
+    pubkey=keys/$USER
   else
-    echo "ERROR: files in $PWD were touched by ${#untrusted[@]} untrusted commits"
-    echo "Customized profile is disabled; please "
-    echo
-    echo "Untrusted commits (B=bad signature, U=untrusted, N=unsigned):"
-    for c in ${untrusted[@]}; do
-      echo $c
-    done
-    . /etc/profile
+    subdir=profiles/_
+    pubkey=keys/_.asc
   fi
-else
-  echo "ERROR: missing custom profile; $subdir not found under $PWD"
+
+  # Determine key ID of the person who owns the profile (and must vouch for
+  # all commits and files in the profile's subdir).
+  owner=`gpg $pubkey | grep '^pub' | cut -d ' ' -f 3 | cut -d / -f 2`
+
+  # Ensure owner's self-attestation of their own pubkey by virtue of having
+  # signed the commit that added the file to the repository.
+  attestation=`git log -n1 --pretty='format:%h' $pubkey`
+  signer=`git verify-commit $commit 2>&1 | grep 'key ID' | grep -oE '[^ ]+$'`
+  if [ $? != 0 ]; then
+        echo "ERROR: unverified commit signature for ${pubkey}"
+        return 10
+  elif [ "$signer" != "$owner" ]; then
+        echo "ERROR: untrusted signer (${signer}) of ${pubkey}"
+        return 11
+  fi
+
+  if [ -d $subdir ]; then
+    echo "First login: customizing profile"
+    cd $subdir
+
+    # Find every commit that has ever touched any file in, or under, this dir.
+    # Verify them all and ensure they're signed by the right key.
+    all=(`git ls-files | xargs -L 1 git log --pretty='format:%h%n' | sort | uniq`)
+    for commit in $all; do
+      signer=`git verify-commit $commit 2>&1 | grep 'key ID' | grep -oE '[^ ]+$'`
+
+      if [ $? != 0 ]; then
+        echo "ERROR: unverified commit signature of ${commit} in ${subdir}"
+        return 20
+      elif [ "$signer" != "$owner" ]; then
+        echo "ERROR: untrusted signer (${signer}) of commit ${commit} in ${subdir}"
+        return 21
+      fi
+    done
+  else
+    echo "ERROR: missing custom profile; $subdir not found under $PWD"
+    return 100
+  fi
+}
+
+pushd /var/lib/dotfiles
+
+__dotfiles_secure__
+
+if [ $? != 0 ]; then
+  echo "Customized profile is disabled for your security; using system default"
   . /etc/profile
 fi
 

@@ -87,11 +87,3 @@ the following two commands:
 
     sudo rm -Rf /var/lib/dotfiles
     exec sudo userdel -rf $USER
-
-Roadmap
--------
-
-1) Keep users from attacking trust roots.
-
-2) Keep users from attacking each other.
-
