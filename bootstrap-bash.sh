@@ -29,10 +29,10 @@ __dotfiles_secure__() {
   attestation=`git log -n1 --pretty='format:%h' $pubkey`
   signer=`git verify-commit $commit 2>&1 | grep 'key ID' | grep -oE '[^ ]+$'`
   if [ $? != 0 ]; then
-        echo "ERROR: unverified commit signature for ${pubkey}"
+        echo "ERROR: unverified commit signature for $pubkey"
         return 10
-  elif [ "$signer" != "$owner" ]; then
-        echo "ERROR: untrusted signer (${signer}) of ${pubkey}"
+  elif [ -z "$owner" -o \( "$signer" != "$owner" \) ]; then
+        echo "ERROR: untrusted signer (${signer}) of $pubkey - expected '${owner}'"
         return 11
   fi
 
@@ -47,10 +47,10 @@ __dotfiles_secure__() {
       signer=`git verify-commit $commit 2>&1 | grep 'key ID' | grep -oE '[^ ]+$'`
 
       if [ $? != 0 ]; then
-        echo "ERROR: unverified commit signature of ${commit} in ${subdir}"
+        echo "ERROR: unverified signature for ${commit} in ${subdir}"
         return 20
       elif [ "$signer" != "$owner" ]; then
-        echo "ERROR: untrusted signer (${signer}) of commit ${commit} in ${subdir}"
+        echo "ERROR: untrusted signer (${signer}) of ${commit} in ${subdir} - expected '${owner}'"
         return 21
       fi
     done
