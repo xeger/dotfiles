@@ -27,7 +27,7 @@ __dotfiles_secure__() {
   # Ensure owner's self-attestation of their own pubkey by virtue of having
   # signed the commit that added the file to the repository.
   attestation=`git log -n1 --pretty='format:%h' $pubkey`
-  signer=`git verify-commit $commit 2>&1 | grep 'key ID' | grep -oE '[^ ]+$'`
+  signer=`git log -n1 --pretty='format:%GG' $attestation | grep 'key ID' | grep -oE '[^ ]+$'`
   if [ $? != 0 ]; then
         echo "ERROR: unverified commit signature for $pubkey"
         return 10
@@ -44,7 +44,7 @@ __dotfiles_secure__() {
     # Verify them all and ensure they're signed by the right key.
     all=(`git ls-files | xargs -L 1 git log --pretty='format:%h%n' | sort | uniq`)
     for commit in $all; do
-      signer=`git verify-commit $commit 2>&1 | grep 'key ID' | grep -oE '[^ ]+$'`
+      signer=`git log -n1 --pretty='format:%GG' $commit | grep 'key ID' | grep -oE '[^ ]+$'`
 
       if [ $? != 0 ]; then
         echo "ERROR: unverified signature for ${commit} in ${subdir}"
@@ -66,7 +66,6 @@ __dotfiles_secure__
 
 if [ $? != 0 ]; then
   echo "Customized profile is disabled for your security; using system default"
-  . /etc/profile
 fi
 
 popd
