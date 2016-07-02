@@ -18,26 +18,41 @@ __dotfiles_secure__() {
   else
     subdir=profiles/_
     pubkey=keys/_.asc
+    needRootTrust=1
   fi
 
-  # Determine key ID of the person who owns the profile (and must vouch for
-  # all commits and files in the profile's subdir).
+  # Determine ID of the key stored in the pubkey file.
   owner=`gpg $pubkey | grep '^pub' | cut -d ' ' -f 3 | cut -d / -f 2`
 
-  # Ensure owner's self-attestation of their own pubkey by virtue of having
-  # signed the commit that added the file to the repository.
+  # Determine the last commit that touched the pubkey file and who signed it.
   attestation=`git log -n1 --pretty='format:%h' $pubkey`
   signer=`git log -n1 --pretty='format:%GG' $attestation | grep 'key ID' | grep -oE '[^ ]+$'`
+
   if [ $? != 0 ]; then
-        echo "ERROR: unverified commit signature for $pubkey"
-        return 10
-  elif [ -z "$owner" -o \( "$signer" != "$owner" \) ]; then
-        echo "ERROR: untrusted signer (${signer}) of $pubkey - expected '${owner}'"
-        return 11
+    echo "ERROR: unverified commit signature for $pubkey"
+    return 10
+  fi
+
+  if [ -n "$needRootTrust" ]; then
+    gpg --list-keys --list-options show-uid-validity $signer | grep -q "\[ultimate\]"
+  else
+    gpg --list-keys --list-options show-uid-validity $signer | grep -q "\[\(full|ultimate\)\] ${user}@localhost"
+  fi
+  if [ $? == 0 ]; then
+    echo "Applying $user profile signed by ($signer)"
+    owner=$signer
+  else
+    echo "ERROR: untrusted attestation (${signer}) of $pubkey - expected a trust root"
+    return 11
+  fi
+
+  if [ -z "$owner" -o \( "$signer" != "$owner" \) ]; then
+    echo "ERROR: untrusted attestation (${signer}) of $pubkey - expected '${owner}'"
+    return 12
   fi
 
   if [ -d $subdir ]; then
-    echo "First login: customizing profile"
+    echo "Integrity-check profile"
     cd $subdir
 
     # Find every commit that has ever touched any file in, or under, this dir.
@@ -47,11 +62,17 @@ __dotfiles_secure__() {
       signer=`git log -n1 --pretty='format:%GG' $commit | grep 'key ID' | grep -oE '[^ ]+$'`
 
       if [ $? != 0 ]; then
-        echo "ERROR: unverified signature for ${commit} in ${subdir}"
+        echo "ERROR: unverified commit signature for ${commit} in ${subdir}"
         return 20
       elif [ "$signer" != "$owner" ]; then
-        echo "ERROR: untrusted signer (${signer}) of ${commit} in ${subdir} - expected '${owner}'"
+        echo "ERROR: untrusted commit signer (${signer}) of ${commit} in ${subdir} - expected '${owner}'"
         return 21
+      fi
+
+      gpg --list-keys --list-options show-uid-validity $signer | grep -Eq "\[\(full|ultimate\)\] ${user}@localhost"
+      if [ $? != 0 ]; then
+        echo "ERROR: no proof of identity for commit signer (${}) of ${commit}"
+        return 22
       fi
     done
   else
