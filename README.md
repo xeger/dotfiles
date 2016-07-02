@@ -126,7 +126,7 @@ or tampers with repository files.
 Mitigation: Verify that only Alice's key has ever signed any commit made to
 her subdir and that all signatures are valid. (DONE)
 
-#### Key stealing
+#### Identity theft
 
 Scenario: Mallory replaces Alice's public key with his own, then uses his
 key to make signed commits to Alice's profile that introduce.
@@ -134,16 +134,10 @@ key to make signed commits to Alice's profile that introduce.
 Mitigation: Verify that a trust root vouches for alice's public key as
 alice@localhost.
 
-#### Default hijacking
+#### Defaults hijacking
 
 Scenario: Mallory tampers with the contents of `profiles/_/*` in order to
 attack users whose profile has not been customized.
 
 Mitigation: Verify that _.asc was committed by one of the trust roots and
 _not_ by itself.
-
-#### Identity theft
-
-Scenario: Mallory replace's Alice's key _and_ profile with his own.
-
-Mitigation: Verify that Alice's GPG key "owns" the ID alice@localhost w/signature by trust root
