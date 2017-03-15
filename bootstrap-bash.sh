@@ -50,12 +50,12 @@ dotfiles() {
   fi
 
   if [ -d $subdir ]; then
+    say "Integrity-checking files in $subdir"
+    cd $subdir
+
     # Find every commit that has ever touched any file in, or under, this dir.
     # Verify them all and ensure they're signed by the right key.
     all=`git ls-files | xargs -L 1 git log --pretty='format:%h%n' | sort | uniq`
-
-    say "Integrity-checking files in $subdir"
-    cd $subdir
 
     for commit in $all; do
       signer=`git log -n1 --pretty='format:%GG' $commit | grep 'key ID' | grep -oE '[^ ]+$'`
@@ -86,6 +86,7 @@ dotfiles() {
 }
 
 if [ -z "$DOTFILES_SECURE" ]; then
+  chmod go-rwx $GNUPGHOME # pam-mkhomedir doesn't seem to get this right
   export GNUPGHOME=$HOME/.gnupg-dotfiles
   cd /var/lib/dotfiles
   dotfiles
