@@ -5,20 +5,25 @@ This repository stores a .bash_profile or similar for everyone in your
 organization. It uses Git commit signatures to ensure that nobody inserts
 malicious code by gaining unauthorized access to the Git repository.
 
-A web-of-trust model is employed; most users' public keys reside in this
+A hierarchical model is employed; most users' public keys reside in this
 repository, but every key must be signed be one of a number of "trust roots"
-before commits signed by that key are considered trustworthy.
+before commits signed by that key are considered trustworthy. The public keys
+of trust roots are stored out-of-band from this repository and must be added
+to the relevant GPG keyring by hand.
 
-**Note:** all users are trusted equally and may attack one another by
-overwriting files. If your users do not fully trust one another, then do not
-store any signing keys in this repository and employ only trust roots instead.
-Trust roots will need to approve and sign any commits made by end users.
+Keys are correlated to profile directories by filename: the file `keys/foo.asc`
+must be used to sign _every_ commit that touches _any_ file under `profiles/foo`
+and if any unsigned or other-signed file is discovered, the user will see an
+error message warning of a possible security breach and the system default
+profile will be loaded instead.
 
 Getting Started
 ===============
 
 Setting up the profile is a bit involved, requiring three steps. The last step
-is fairly involved, but it is critical to the security of this scheme.
+is fairly complex, but it is critical to the security of this scheme. Please
+proceed with caution!
+
 
 Clone Script Repository
 -----------------------
@@ -30,20 +35,20 @@ the scripts under `profiles/$USER`. If the user does not have a specific
 profile, `profiles/_` is used as a callback -- but it must be
 cryptographically signed.
 
+
 Install Trust Roots
 -------------------
 
-The public keys used to sign commits in this repository are stored in this
-repository under `keys/`; however, we cannot blindly trust these keys because
-an attacker with write access to the repository could insert malicious keys.
+We employ a hierarchical trust model: certain people within your organization
+are entrusted with the ability to sign other peoples' public keys and vouch
+for their identity, which allows us to trust that person to commit to her own
+profile directory (but not to others').
 
-We employ a web-of-trust model: certain people within your organization are
-entrusted with the ability to sign other peoples' public keys and vouch for
-their identity, which allows us to trust that person to commit to her own
-profile directory (but not to others'). The trust roots also vouch for the
-identity of each public key; in order to login, Alice must produce a GPG key
-with an attached identity alice@localhost and some trust root must sign that
-key before Alice can commit the signed key to the Git repository.
+The trust roots also vouch for the login identity of each public key; in order
+to customize her profile, a trust root must place Alice's public key in a file
+named `keys/alice.asc` and sign the commit that intorduces that file; this is
+an attestation that the key belongs to Alice and is trusted to sign all of the
+files under `profiles/alice`.gd
 
 The public keys of your "trust roots" must be stored elsewhere than in this
 repository. The trust roots also need a special GPG command to bless them with
@@ -63,17 +68,9 @@ gpg --list-keys --fingerprint --with-colons |
   gpg --import-ownertrust
 ```
 
-This ensures that all users will bestow ultimate trust in the trust roots.
-
-Next, import all of the individual signing keys, which _are_ stored in this
-repository but won't be trusted unless they have been signed by one of the
-trust roots:
-
-```
-for pubkey in `ls /var/lib/dotfiles/keys/*.asc`; do
-  gpg --import $pubkey
-done
-```
+This ensures that all users will bestow "ultimate" trust in the trust roots
+because their GnuPG keyring will be initialized from the master keyring under
+/etc/skel.
 
 Setup Default Profile
 ---------------------
@@ -83,17 +80,13 @@ anonymous profile named `_` is used; however, this profile must still be
 cryptographically signed; the file `keys/_.asc` is used as the "default signer"
 who will vouch for the default profile.
 
-Normally, users self-attest their keys by committing a public-key file to
-`keys/*.asc` and signing the commit that introduces the file with the
-corresponding public key. The defaults under `profiles/_` are an exception to
-this rule; they must be signed by one of the trust roots.
-
-
+Any of the trust roots may emplace his own public key in `_.asc` and setup the
+default profile as if he were a normal user.
 
 Install Bootstrap Hook
 ----------------------
 First audit the source code of the bash bootstrap script in this repo to
-satisfy yourself that you trust it. Then copy the script to
+satisfy yourself that you understand and trust it. Then copy the script to
 `/etc/skel/.bash_profile`. Finally, edit the script in its new location and
 remove the `exit 1` from the top of the script as an indication that you
 trust it.
@@ -129,10 +122,10 @@ her subdir and that all signatures are valid. (DONE)
 #### Identity theft
 
 Scenario: Mallory replaces Alice's public key with his own, then uses his
-key to make signed commits to Alice's profile that introduce.
+key to make signed commits to Alice's profile.
 
-Mitigation: Verify that a trust root vouches for alice's public key as
-alice@localhost.
+Mitigation: Require trust roots to sign the commit that adds/modifies Alice's
+public key. ()
 
 #### Defaults hijacking
 
@@ -140,4 +133,4 @@ Scenario: Mallory tampers with the contents of `profiles/_/*` in order to
 attack users whose profile has not been customized.
 
 Mitigation: Verify that _.asc was committed by one of the trust roots and
-_not_ by itself.
+_not_ by itself. (DONE)
